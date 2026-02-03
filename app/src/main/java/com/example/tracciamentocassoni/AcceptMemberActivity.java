@@ -6,6 +6,8 @@ import android.content.IntentFilter;
 import android.nfc.NfcAdapter;
 import android.nfc.Tag;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.View;
 import android.widget.Button;
 import android.widget.ProgressBar;
@@ -48,6 +50,10 @@ public class AcceptMemberActivity extends AppCompatActivity {
     private RFIDWithUHFUART rfidReader;
     private static final long RFID_SCAN_DURATION_MS = 2000;
     private static final long RFID_SCAN_POLL_MS = 50;
+    private static final long NFC_SCAN_DURATION_MS = 10000;
+    private final Handler nfcHandler = new Handler(Looper.getMainLooper());
+    private boolean nfcScanActive = false;
+    private Runnable nfcTimeoutRunnable;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -86,30 +92,59 @@ public class AcceptMemberActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        enableNfcDispatch();
+        startNfcTimedScan();
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-        disableNfcDispatch();
+        stopNfcTimedScan();
     }
 
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
+        if (!nfcScanActive) {
+            return;
+        }
         if (intent != null && NfcAdapter.ACTION_TAG_DISCOVERED.equals(intent.getAction())) {
             Tag tag = intent.getParcelableExtra(NfcAdapter.EXTRA_TAG);
             if (tag != null && tag.getId() != null) {
                 String tagId = bytesToHex(tag.getId());
                 showRfidDisplay("RFID: " + tagId);
                 fetchMemberByRfid(tagId);
+                stopNfcTimedScan();
             }
         }
     }
 
+    private void startNfcTimedScan() {
+        if (nfcAdapter == null) {
+            return;
+        }
+        nfcScanActive = true;
+        enableNfcDispatch();
+        if (nfcTimeoutRunnable != null) {
+            nfcHandler.removeCallbacks(nfcTimeoutRunnable);
+        }
+        nfcTimeoutRunnable = () -> {
+            nfcScanActive = false;
+            disableNfcDispatch();
+        };
+        nfcHandler.postDelayed(nfcTimeoutRunnable, NFC_SCAN_DURATION_MS);
+    }
+
+    private void stopNfcTimedScan() {
+        nfcScanActive = false;
+        if (nfcTimeoutRunnable != null) {
+            nfcHandler.removeCallbacks(nfcTimeoutRunnable);
+            nfcTimeoutRunnable = null;
+        }
+        disableNfcDispatch();
+    }
+
     private void enableNfcDispatch() {
-        if (nfcAdapter != null) {
+        if (nfcAdapter != null && nfcScanActive) {
             Intent intent = new Intent(this, getClass()).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
             PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent,
                     PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
