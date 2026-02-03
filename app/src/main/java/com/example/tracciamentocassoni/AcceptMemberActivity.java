@@ -22,6 +22,7 @@ import com.rscja.deviceapi.RFIDWithUHFUART;
 import com.rscja.deviceapi.entity.UHFTAGInfo;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -45,6 +46,8 @@ public class AcceptMemberActivity extends AppCompatActivity {
 
     private NfcAdapter nfcAdapter;
     private RFIDWithUHFUART rfidReader;
+    private static final long RFID_SCAN_DURATION_MS = 2000;
+    private static final long RFID_SCAN_POLL_MS = 50;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -83,21 +86,13 @@ public class AcceptMemberActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        if (nfcAdapter != null) {
-            Intent intent = new Intent(this, getClass()).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
-            PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent,
-                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-            IntentFilter[] filters = new IntentFilter[]{ new IntentFilter(NfcAdapter.ACTION_TAG_DISCOVERED) };
-            nfcAdapter.enableForegroundDispatch(this, pendingIntent, filters, null);
-        }
+        enableNfcDispatch();
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-        if (nfcAdapter != null) {
-            nfcAdapter.disableForegroundDispatch(this);
-        }
+        disableNfcDispatch();
     }
 
     @Override
@@ -107,8 +102,25 @@ public class AcceptMemberActivity extends AppCompatActivity {
             Tag tag = intent.getParcelableExtra(NfcAdapter.EXTRA_TAG);
             if (tag != null && tag.getId() != null) {
                 String tagId = bytesToHex(tag.getId());
-                handleRfidRead(tagId);
+                showRfidDisplay("RFID: " + tagId);
+                fetchMemberByRfid(tagId);
             }
+        }
+    }
+
+    private void enableNfcDispatch() {
+        if (nfcAdapter != null) {
+            Intent intent = new Intent(this, getClass()).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            IntentFilter[] filters = new IntentFilter[]{ new IntentFilter(NfcAdapter.ACTION_TAG_DISCOVERED) };
+            nfcAdapter.enableForegroundDispatch(this, pendingIntent, filters, null);
+        }
+    }
+
+    private void disableNfcDispatch() {
+        if (nfcAdapter != null) {
+            nfcAdapter.disableForegroundDispatch(this);
         }
     }
 
@@ -120,10 +132,12 @@ public class AcceptMemberActivity extends AppCompatActivity {
         return sb.toString();
     }
 
-    private void handleRfidRead(String tag) {
-        textMemberCode.setText("RFID: " + tag);
+    private void showRfidDisplay(String displayText) {
+        textMemberCode.setText(displayText);
         textMemberCode.setVisibility(View.VISIBLE);
+    }
 
+    private void fetchMemberByRfid(String tag) {
         databaseApi.getMemberIdByRfid(tag).enqueue(new Callback<RfidMemberResponse>() {
             @Override
             public void onResponse(Call<RfidMemberResponse> call, Response<RfidMemberResponse> resp) {
@@ -204,10 +218,14 @@ public class AcceptMemberActivity extends AppCompatActivity {
     }
 
     private void showMemberError() {
+        showMemberError("Errore: socio non trovato");
+    }
+
+    private void showMemberError(String message) {
         textMemberName.setVisibility(View.GONE);
         textMemberSurname.setVisibility(View.GONE);
         recyclerCassoni.setVisibility(View.GONE);
-        textError.setText("Errore: socio non trovato");
+        textError.setText(message);
         textError.setVisibility(View.VISIBLE);
         memberLoaded = false;
         cassoniLoaded = false;
@@ -253,33 +271,85 @@ public class AcceptMemberActivity extends AppCompatActivity {
                 return;
             }
         }
-        try {
-            if (rfidReader.init(this)) {
-                if (nfcAdapter != null) nfcAdapter.disableForegroundDispatch(this);
+        new Thread(() -> {
+            boolean initialized = false;
+            boolean started = false;
+            Set<String> tags = new HashSet<>();
+            try {
+                if (!rfidReader.init(this)) {
+                    runOnUiThread(() -> Toast.makeText(this, "Errore inizializzazione lettore UHF.", Toast.LENGTH_LONG).show());
+                    return;
+                }
+                initialized = true;
+                runOnUiThread(() -> {
+                    scanningProgressBar.setVisibility(View.VISIBLE);
+                    disableNfcDispatch();
+                });
 
-                UHFTAGInfo tagInfo = rfidReader.inventorySingleTag();
-                if (tagInfo != null && tagInfo.getEPC() != null) {
-                    String tagId = tagInfo.getEPC();
-                    handleRfidRead(tagId);
-                } else {
-                    Toast.makeText(this, "Nessun tag UHF rilevato, riprova.", Toast.LENGTH_SHORT).show();
+                started = rfidReader.startInventoryTag();
+                if (!started) {
+                    runOnUiThread(() -> {
+                        scanningProgressBar.setVisibility(View.GONE);
+                        enableNfcDispatch();
+                        Toast.makeText(this, "Impossibile avviare la scansione UHF.", Toast.LENGTH_LONG).show();
+                    });
+                    return;
                 }
 
-                rfidReader.free();
-
-                if (nfcAdapter != null) {
-                    Intent intent = new Intent(this, getClass()).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
-                    PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent,
-                            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-                    IntentFilter[] filters = new IntentFilter[]{ new IntentFilter(NfcAdapter.ACTION_TAG_DISCOVERED) };
-                    nfcAdapter.enableForegroundDispatch(this, pendingIntent, filters, null);
+                long deadline = System.currentTimeMillis() + RFID_SCAN_DURATION_MS;
+                while (System.currentTimeMillis() < deadline && !Thread.currentThread().isInterrupted()) {
+                    UHFTAGInfo tagInfo = rfidReader.readTagFromBuffer();
+                    if (tagInfo != null && tagInfo.getEPC() != null) {
+                        tags.add(tagInfo.getEPC());
+                    } else {
+                        try {
+                            Thread.sleep(RFID_SCAN_POLL_MS);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                        }
+                    }
                 }
-            } else {
-                Toast.makeText(this, "Errore inizializzazione lettore UHF.", Toast.LENGTH_LONG).show();
+
+                Set<String> tagsSnapshot = new HashSet<>(tags);
+                runOnUiThread(() -> {
+                    scanningProgressBar.setVisibility(View.GONE);
+                    enableNfcDispatch();
+                    if (tagsSnapshot.isEmpty()) {
+                        Toast.makeText(this, "Nessun tag UHF rilevato, riprova.", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    String display = formatRfidTags(tagsSnapshot);
+                    showRfidDisplay(display);
+                    if (tagsSnapshot.size() == 1) {
+                        fetchMemberByRfid(tagsSnapshot.iterator().next());
+                    } else {
+                        showMemberError("Rilevati più tag: avvicina un solo tag per continuare.");
+                    }
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    scanningProgressBar.setVisibility(View.GONE);
+                    enableNfcDispatch();
+                    Toast.makeText(this, "Lettura UHF fallita: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                });
+            } finally {
+                if (initialized) {
+                    if (started) {
+                        rfidReader.stopInventory();
+                    }
+                    rfidReader.free();
+                }
             }
-        } catch (Exception e) {
-            e.printStackTrace();
-            Toast.makeText(this, "Lettura UHF fallita: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }).start();
+    }
+
+    private String formatRfidTags(Set<String> tags) {
+        List<String> sorted = new ArrayList<>(tags);
+        Collections.sort(sorted);
+        StringBuilder sb = new StringBuilder("RFID rilevati:");
+        for (String tag : sorted) {
+            sb.append("\n• ").append(tag);
         }
+        return sb.toString();
     }
 }
