@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/main"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context=".UnloadBoxesActivity">
+
+    <!-- Titolo -->
+    <TextView
+        android:id="@+id/text_title"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="Scarico Cassoni"
+        android:textSize="24sp"
+        android:textStyle="bold"
+        android:padding="16dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- Stato corrente -->
+    <TextView
+        android:id="@+id/text_status"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="Stato: IDLE"
+        android:textStyle="bold"
+        android:textSize="16sp"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="8dp"
+        app:layout_constraintTop_toBottomOf="@id/text_title"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- Riquadro alto: Cassone -->
+    <TextView
+        android:id="@+id/text_box1"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="#E0E0E0"
+        android:gravity="center"
+        android:text="Cassone: —"
+        android:textSize="18sp"
+        android:padding="16dp"
+        app:layout_constraintTop_toBottomOf="@id/text_status"
+        app:layout_constraintBottom_toTopOf="@id/text_box2"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- Riquadro basso: Garolla -->
+    <TextView
+        android:id="@+id/text_box2"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="#CCCCCC"
+        android:gravity="center"
+        android:text="Garolla: —"
+        android:textSize="18sp"
+        android:padding="16dp"
+        app:layout_constraintTop_toBottomOf="@id/text_box1"
+        app:layout_constraintBottom_toTopOf="@id/layout_actions"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintVertical_chainStyle="spread" />
+
+    <!-- Azioni in basso: Annulla + Scaricato -->
+    <LinearLayout
+        android:id="@+id/layout_actions"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:padding="16dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <Button
+            android:id="@+id/button_cancel"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Annulla" />
+
+        <Space
+            android:layout_width="16dp"
+            android:layout_height="wrap_content" />
+
+        <Button
+            android:id="@+id/button_unloaded"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Scaricato"
+            android:enabled="false" />
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

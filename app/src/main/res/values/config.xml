@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Se true, usa il tag RFID cablato per test;
+      altrimenti integrerai il vero lettore RFID.
+    -->
+    <bool name="test_mode">false</bool>
+</resources>
