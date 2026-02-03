@@ -74,6 +74,8 @@ public class AcceptMemberActivity extends AppCompatActivity {
         recyclerCassoni.setAdapter(cassoniAdapter);
         recyclerCassoni.setVisibility(View.GONE);
 
+        scanningProgressBar.setVisibility(View.GONE);
+
         buttonConfirmRead.setEnabled(false);
         buttonConfirmRead.setOnClickListener(v -> onConfirmRead());
         buttonManualRescan.setOnClickListener(v -> onManualRescan());
@@ -87,12 +89,15 @@ public class AcceptMemberActivity extends AppCompatActivity {
             Toast.makeText(this, "NFC disattivato, attivalo nelle impostazioni", Toast.LENGTH_LONG).show();
             startActivity(new Intent(android.provider.Settings.ACTION_NFC_SETTINGS));
         }
+
+        handleNfcIntent(getIntent());
     }
 
     @Override
     protected void onResume() {
         super.onResume();
         startNfcTimedScan();
+        handleNfcIntent(getIntent());
     }
 
     @Override
@@ -104,16 +109,24 @@ public class AcceptMemberActivity extends AppCompatActivity {
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
-        if (!nfcScanActive) {
+        handleNfcIntent(intent);
+    }
+
+    private void handleNfcIntent(Intent intent) {
+        if (!nfcScanActive || intent == null) {
             return;
         }
-        if (intent != null && NfcAdapter.ACTION_TAG_DISCOVERED.equals(intent.getAction())) {
+        String action = intent.getAction();
+        if (NfcAdapter.ACTION_TAG_DISCOVERED.equals(action)
+                || NfcAdapter.ACTION_TECH_DISCOVERED.equals(action)
+                || NfcAdapter.ACTION_NDEF_DISCOVERED.equals(action)) {
             Tag tag = intent.getParcelableExtra(NfcAdapter.EXTRA_TAG);
             if (tag != null && tag.getId() != null) {
                 String tagId = bytesToHex(tag.getId());
                 showRfidDisplay("RFID: " + tagId);
                 fetchMemberByRfid(tagId);
                 stopNfcTimedScan();
+                setIntent(new Intent(this, getClass()));
             }
         }
     }
@@ -148,7 +161,10 @@ public class AcceptMemberActivity extends AppCompatActivity {
             Intent intent = new Intent(this, getClass()).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
             PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent,
                     PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-            IntentFilter[] filters = new IntentFilter[]{ new IntentFilter(NfcAdapter.ACTION_TAG_DISCOVERED) };
+            IntentFilter tagFilter = new IntentFilter(NfcAdapter.ACTION_TAG_DISCOVERED);
+            IntentFilter techFilter = new IntentFilter(NfcAdapter.ACTION_TECH_DISCOVERED);
+            IntentFilter ndefFilter = new IntentFilter(NfcAdapter.ACTION_NDEF_DISCOVERED);
+            IntentFilter[] filters = new IntentFilter[]{ tagFilter, techFilter, ndefFilter };
             nfcAdapter.enableForegroundDispatch(this, pendingIntent, filters, null);
         }
     }
@@ -179,12 +195,13 @@ public class AcceptMemberActivity extends AppCompatActivity {
                 if (resp.isSuccessful() && resp.body() != null && resp.body().isSuccess()) {
                     loadMemberDetails(resp.body().getMembersId());
                 } else {
-                    showMemberError();
+                    String msg = resp.body() != null ? resp.body().getError() : null;
+                    showMemberError(msg != null ? ("Errore: " + msg) : "Errore: socio non trovato");
                 }
             }
             @Override
             public void onFailure(Call<RfidMemberResponse> call, Throwable t) {
-                showMemberError();
+                showMemberError("Errore rete: " + t.getMessage());
             }
         });
     }
@@ -199,12 +216,13 @@ public class AcceptMemberActivity extends AppCompatActivity {
                     showMemberInfo(m.getNome(), m.getCognome());
                     loadCassoni();
                 } else {
-                    showMemberError();
+                    String msg = resp.body() != null ? resp.body().getError() : null;
+                    showMemberError(msg != null ? ("Errore: " + msg) : "Errore: socio non trovato");
                 }
             }
             @Override
             public void onFailure(Call<MemberResponse> call, Throwable t) {
-                showMemberError();
+                showMemberError("Errore rete: " + t.getMessage());
             }
         });
     }

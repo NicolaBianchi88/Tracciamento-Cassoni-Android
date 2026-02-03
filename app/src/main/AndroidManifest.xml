@@ -35,12 +35,12 @@
 
         <activity
             android:name=".AcceptMemberActivity"
-            android:exported="false" />
+            android:exported="false"
+            android:launchMode="singleTop" />
 
         <activity
             android:name=".UnloadBoxesActivity"
             android:exported="false" />
-
 
         <!-- se hai altre schermate: -->
         <!--
